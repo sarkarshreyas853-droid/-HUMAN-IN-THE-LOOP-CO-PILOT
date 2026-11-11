@@ -6,6 +6,8 @@ decision-maker and public contact details, drafts an email and a WhatsApp messag
 saves everything as a row marked **Pending Review**. A person checks the row and sends the
 message. Nothing is ever sent automatically.
 
+**Live demo:** https://human-in-the-loop-co-pilot-1.onrender.com (free tier, so the first load can take up to a minute).
+
 ## How it works
 
 ```
@@ -28,7 +30,7 @@ Each step reports a short progress message, and the web page shows them as they 
 | Web search for the decision-maker | `app/search.py` (Tavily, optional) |
 | Contact retrieval (phone/WhatsApp, email, LinkedIn) | Regex on the company site (`app/scraper.py`) plus web search |
 | Email draft (3 sentences) and WhatsApp draft (under 60 words) | `GroqLLM.draft` and `DRAFT_SYSTEM`. The word limit is checked in code. |
-| Output to Google Sheet with `Status: Pending Review` | `app/sheets.py` |
+| Output to Google Sheet with `Status: Pending Review` | `app/sheets.py`, `apps_script/Code.gs` |
 
 Sheet columns: `Company Name | City | Decision Maker | Title | Contact Details | Draft: Email | Draft: WhatsApp | Status`,
 then `Requirement Context | Confidence | Sources | Input | Channel | Created At | Notes`.
@@ -54,10 +56,23 @@ Open http://localhost:8000 after you start the server.
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env             # Windows: copy .env.example .env
 ```
 
-Put your keys in `.env`, not in `.env.example`. `.env` is git-ignored. Keep `.env.example` blank.
+Then create a file named `.env` in this folder with your settings. `.env` is git-ignored,
+so keys never reach the repo:
+
+```
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+GROQ_VISION_MODEL=qwen/qwen3.8-27b
+TAVILY_API_KEY=
+APPS_SCRIPT_URL=
+APPS_SCRIPT_TOKEN=
+GOOGLE_SHEET_ID=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+SENDER_NAME=Team GoPratle
+```
 
 ### 2. Groq API key (free, no card needed)
 
@@ -76,18 +91,27 @@ Create a key at https://tavily.com and set `TAVILY_API_KEY`. Web search is used 
 decision-maker. It is capped by `MAX_WEB_SEARCHES` (default 3). Leave the key blank to
 use only the company's own website.
 
-### 4. Google Sheet (optional)
+### 4. Google Sheet
 
-Without this, rows are written to `leads.csv`, so you can test first.
+Without this, rows are written to `leads.csv`, so you can test first. Create a blank Google
+Sheet, name its first tab `Leads`, and put the sheet ID from its URL
+(`docs.google.com/spreadsheets/d/<THIS_PART>/edit`) in `GOOGLE_SHEET_ID`. Then pick one option.
 
-1. Create a blank Google Sheet. Copy the ID from its URL
-   (`docs.google.com/spreadsheets/d/<THIS_PART>/edit`) into `GOOGLE_SHEET_ID`.
-2. In Google Cloud Console, create a project, enable the **Google Sheets API**, create a
+**Option A: Apps Script web app (no Google Cloud project needed).**
+
+1. In the sheet, open **Extensions > Apps Script** and paste in `apps_script/Code.gs`.
+2. Set `TOKEN` on the first line to a long random string.
+3. **Deploy > New deployment > Web app**, with "Execute as: Me" and "Who has access: Anyone".
+4. Put the web app URL in `APPS_SCRIPT_URL` and the same token in `APPS_SCRIPT_TOKEN`.
+
+**Option B: service account.**
+
+1. In Google Cloud Console, create a project, enable the **Google Sheets API**, create a
    **Service Account**, and download a **JSON key**.
-3. Save the key as `service_account.json` in this folder.
-4. Open the JSON, copy the `client_email`, and **Share** the sheet with that address as Editor.
+2. Save the key as `service_account.json` in this folder.
+3. Copy the `client_email` from the JSON and **Share** the sheet with it as Editor.
 
-The header row is created on the first lead.
+The header row is created on the first lead. If `APPS_SCRIPT_URL` is set, it is used first.
 
 ### 5. Telegram bot (optional)
 
@@ -157,6 +181,14 @@ the web page and the Telegram webhook.
   (the company site and official pages).
 - **Basic abuse protection.** Fetching is limited to public http(s) addresses, uploads are
   capped at 5 MB, and the Telegram webhook path carries a secret.
+
+## Deployment
+
+The live demo runs on Render's free tier as a Python web service:
+
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- The same settings as `.env` are entered as environment variables in Render.
 
 ## Known limits
 

@@ -2,7 +2,7 @@
 
 Deliberately simple: plain HTTP + BeautifulSoup, no headless browser.
 Sites that block bots (LinkedIn, Instagram) return little or nothing; in that
-case the pipeline still works because Claude's web search fills the gap.
+case the pipeline still works because the web search step fills the gap.
 """
 import ipaddress
 import re
