@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoPratle Lead Copilot</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2330;
+    --line: #2a3340;
+    --ink: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-soft: rgba(59, 130, 246, 0.14);
+    --success: #3fb950;
+    --danger: #f87171;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: radial-gradient(1200px 500px at 10% -10%, #14213d 0%, transparent 60%), var(--bg);
+    min-height: 100vh;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar {
+    max-width: 1000px; margin: 0 auto; padding: 14px 18px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .01em; }
+  .logo {
+    width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6); color: #fff; font-size: 15px;
+  }
+  .brand small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+  .pill-live {
+    font-size: 12px; color: var(--muted); border: 1px solid var(--line);
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  }
+
+  main { max-width: 1000px; margin: 0 auto; padding: 26px 18px 70px; display: grid; gap: 18px; }
+  h1 { font-size: 1.6rem; margin: 0; letter-spacing: -.01em; }
+  .lede { margin: 6px 0 0; color: var(--muted); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  h2 { font-size: 1rem; margin: 0; font-weight: 600; }
+  .muted { color: var(--muted); font-size: .88rem; }
+  .error { color: var(--danger); }
+
+  label { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 8px; }
+  input[type=text], textarea, select {
+    font: inherit; color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  input[type=text] { width: 100%; padding: 12px 14px; }
+  input[type=text]:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  input[type=file] { color: var(--muted); font: inherit; width: 100%; }
+  input[type=file]::file-selector-button {
+    margin-right: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink); cursor: pointer; font: inherit;
+  }
+  .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .8rem; margin: 16px 0; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 11px 18px;
+    cursor: pointer; background: var(--accent); color: #fff; transition: background .15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button[disabled] { opacity: .55; cursor: wait; }
+  button.ghost {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+    padding: 6px 12px; font-weight: 500; font-size: .84rem;
+  }
+  button.ghost:hover { background: #242d3b; }
+  button.link { background: none; color: var(--accent); padding: 4px 8px; font-weight: 600; }
+  button.link:hover { background: var(--accent-soft); }
+
+  #status { margin-top: 12px; color: var(--muted); min-height: 1.4em; font-size: .92rem; }
+
+  /* live progress steps */
+  .steps { margin-top: 14px; display: grid; gap: 8px; font-size: .92rem; }
+  .step { position: relative; padding-left: 22px; color: var(--ink); }
+  .step::before {
+    content: ""; position: absolute; left: 0; top: .5em; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent); animation: pulse 1.2s ease-in-out infinite;
+  }
+  .step.done { color: var(--muted); }
+  .step.done::before { background: var(--success); animation: none; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  .grid { display: grid; grid-template-columns: 150px 1fr; gap: 10px 14px; margin: 0; }
+  .grid dt { color: var(--muted); font-size: .88rem; }
+  .grid dd { margin: 0; overflow-wrap: anywhere; }
+
+  .pill {
+    display: inline-block; background: var(--accent-soft); color: #93c5fd;
+    border-radius: 999px; padding: 3px 11px; font-size: .8rem; font-weight: 600;
+  }
+  textarea.edit {
+    width: 100%; margin-top: 10px; padding: 14px; line-height: 1.5; resize: vertical;
+  }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar input[type=text] { flex: 1; min-width: 200px; }
+  .toolbar select { padding: 10px 12px; }
+
+  .table-wrap { overflow-x: auto; margin: 0 -6px; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th {
+    color: var(--muted); font-weight: 600; font-size: .75rem;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  td.name { font-weight: 600; }
+  tr:hover td { background: rgba(255, 255, 255, 0.02); }
+  tr.active td { background: var(--accent-soft); }
+  table select { padding: 7px 10px; }
+
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .grid dt { margin-top: 8px; }
+    .pill-live { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">
+      <div class="logo">G</div>
+      <div>GoPratle Copilot<small>Lead enrichment &amp; outreach drafts</small></div>
+    </div>
+    <span class="pill-live">Human review before sending</span>
+  </div>
+</header>
+
+<main>
+  <div>
+    <h1>New lead</h1>
+      <p class="lede">Paste an agency link or upload a screenshot. You get the decision-maker, contacts and two drafts.</p>
+  </div>
+
+  <form id="form" class="card">
+    <label for="url">Agency website, LinkedIn page or post link</label>
+    <input id="url" name="url" type="text" inputmode="url" placeholder="https://example-events.com">
+    <div class="divider">or</div>
+    <label for="screenshot">Screenshot of a crew / hiring notice</label>
+    <input id="screenshot" name="screenshot" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+    <div style="margin-top:18px"><button id="go" type="submit">Enrich &amp; draft</button></div>
+    <div id="status" role="status"></div>
+    <div id="steps" class="steps" hidden></div>
+  </form>
+
+  <section id="result" class="card" hidden>
+    <div class="card-head">
+      <h2 id="r-company"></h2>
+      <span class="pill" id="r-status"></span>
+    </div>
+    <dl class="grid">
+      <dt>City</dt><dd id="r-city"></dd>
+      <dt>Requirement</dt><dd id="r-req"></dd>
+      <dt>Decision maker</dt><dd id="r-dm"></dd>
+      <dt>Title</dt><dd id="r-title"></dd>
+      <dt>Contact details</dt><dd id="r-contact"></dd>
+      <dt>Confidence</dt><dd id="r-conf"></dd>
+      <dt>Saved to</dt><dd id="r-saved"></dd>
+    </dl>
+
+    <div style="margin-top:20px">
+      <div class="card-head" style="margin-bottom:0"><h2>Email draft</h2><button class="ghost" data-copy="e-email" type="button">Copy</button></div>
+      <textarea id="e-email" class="edit" rows="9"></textarea>
+    </div>
+    <div style="margin-top:18px">
+      <div class="card-head" style="margin-bottom:0"><h2>WhatsApp draft <span id="r-wc" class="muted" style="font-weight:400"></span></h2><button class="ghost" data-copy="e-wa" type="button">Copy</button></div>
+      <textarea id="e-wa" class="edit" rows="4"></textarea>
+    </div>
+    <div style="margin-top:18px">
+      <label for="e-notes">Notes</label>
+      <textarea id="e-notes" class="edit" rows="3" style="margin-top:0" placeholder="e.g. Called Asha, asked for a quote by Friday"></textarea>
+    </div>
+    <div class="card-head" style="margin-top:18px; margin-bottom:0; justify-content:flex-end">
+      <span id="save-msg" class="muted"></span>
+      <button id="save" type="button">Save changes</button>
+    </div>
+  </section>
+
+  <section class="card" id="leads-card">
+    <div class="card-head">
+      <h2>All leads</h2>
+      <div><span class="muted" id="backend"></span> <button class="ghost" id="refresh" type="button">Refresh</button></div>
+    </div>
+    <div class="toolbar">
+      <input id="search" type="text" placeholder="Search company, city, decision maker or title">
+      <select id="filter-status"><option value="">All statuses</option></select>
+    </div>
+    <div class="table-wrap">
+      <table id="leads">
+        <thead><tr><th>Company</th><th>City</th><th>Decision maker</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="muted" id="leads-empty" hidden>No leads yet. Submit one above.</p>
+    <p class="muted" id="no-match" hidden>No leads match your search.</p>
+    <p class="error" id="leads-error" hidden></p>
+  </section>
+</main>
+
+<script>
+const SHEET_URL = "{{SHEET_URL}}";
+const $ = id => document.getElementById(id);
+const form = $("form"), statusEl = $("status"), go = $("go"), steps = $("steps");
+let leads = [];           // rows from GET /api/leads
+let statusOptions = [];   // allowed statuses from the server
+let currentRow = null;    // sheet row of the lead shown in the result card
+
+// ---------- submit a new lead (streams progress steps) ----------
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const data = new FormData(form);
+  if (!data.get("url").trim() && !(data.get("screenshot") && data.get("screenshot").size)) {
+    statusEl.className = "error"; statusEl.textContent = "Add a link or choose a screenshot first."; return;
+  }
+  go.disabled = true; $("result").hidden = true;
+  statusEl.className = ""; statusEl.textContent = "";
+  steps.textContent = ""; steps.hidden = false;
+  try {
+    const res = await fetch("/api/leads/stream", { method: "POST", body: data });
+    if (!res.ok) { const b = await res.json(); throw new Error(b.detail || "Request failed"); }
+    const finished = await readStream(res);
+    showLead(finished.row, finished.saved_to, finished.row_number);
+    statusEl.textContent = "Done. Review the drafts, edit if needed, then save.";
+    await loadLeads();
+  } catch (err) {
+    statusEl.className = "error"; statusEl.textContent = err.message;
+  } finally {
+    go.disabled = false; steps.hidden = true;
+  }
+});
+
+async function readStream(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "", finished = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, cut).trim();
+      buffer = buffer.slice(cut + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line);
+      if (msg.step) addStep(msg.step);
+      if (msg.error) throw new Error(msg.error);
+      if (msg.done) finished = msg;
+    }
+  }
+  if (!finished) throw new Error("Processing stopped before it finished. Try again.");
+  return finished;
+}
+
+function addStep(text) {
+  for (const el of steps.querySelectorAll(".step:not(.done)")) el.classList.add("done");
+  const el = document.createElement("div");
+  el.className = "step";
+  el.textContent = text;
+  steps.appendChild(el);
+}
+
+// ---------- result card (view and edit one lead) ----------
+function showLead(r, savedTo, row) {
+  currentRow = row || null;
+  $("r-company").textContent = r["Company Name"];
+  $("r-status").textContent = "Status: " + r["Status"];
+  $("r-city").textContent = r["City"];
+  $("r-req").textContent = r["Requirement Context"];
+  $("r-dm").textContent = r["Decision Maker"];
+  $("r-title").textContent = r["Title"];
+  $("r-contact").textContent = r["Contact Details"];
+  $("r-conf").textContent = r["Confidence"];
+  const saved = $("r-saved");
+  saved.textContent = (savedTo || "Leads list") + " ";
+  if (SHEET_URL) {
+    const a = document.createElement("a");
+    a.href = SHEET_URL; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Open sheet";
+    saved.appendChild(a);
+  }
+  $("e-email").value = r["Draft: Email"] || "";
+  $("e-wa").value = r["Draft: WhatsApp"] || "";
+  $("e-notes").value = r["Notes"] || "";
+  $("save").disabled = !currentRow;
+  $("save-msg").textContent = "";
+  countWords();
+  $("result").hidden = false;
+  $("result").scrollIntoView({ behavior: "smooth" });
+}
+
+function countWords() {
+  const n = $("e-wa").value.trim().split(/\s+/).filter(Boolean).length;
+  $("r-wc").textContent = `(${n} words${n >= 60 ? ", over the 60-word limit" : ""})`;
+}
+$("e-wa").addEventListener("input", countWords);
+
+document.querySelectorAll("[data-copy]").forEach(btn => btn.addEventListener("click", async () => {
+  await navigator.clipboard.writeText($(btn.dataset.copy).value);
+  const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = old, 1200);
+}));
+
+$("save").addEventListener("click", saveEdits);
+
+async function saveEdits() {
+  if (!currentRow) return;
+  const btn = $("save"), msg = $("save-msg");
+  const fields = {
+    "Draft: Email": $("e-email").value,
+    "Draft: WhatsApp": $("e-wa").value,
+    "Notes": $("e-notes").value,
+  };
+  btn.disabled = true; msg.className = "muted"; msg.textContent = "Saving…";
+  try {
+    const res = await fetch(`/api/leads/${currentRow}/fields`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || "Could not save");
+    const lead = leads.find(l => l._row === currentRow);
+    if (lead) Object.assign(lead, fields);
+    msg.textContent = "Saved.";
+  } catch (e) {
+    msg.className = "error"; msg.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- leads list (search, filter, status) ----------
+async function loadLeads() {
+  const err = $("leads-error");
+  err.hidden = true;
+  try {
+    const res = await fetch("/api/leads");
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || "Could not load leads");
+    leads = body.leads;
+    statusOptions = body.statuses;
+    $("backend").textContent = "Stored in " + body.backend;
+    populateStatusFilter();
+    renderLeads();
+  } catch (e) {
+    err.textContent = e.message; err.hidden = false;
+  }
+}
+
+function populateStatusFilter() {
+  const sel = $("filter-status");
+  const current = sel.value;
+  sel.textContent = "";
+  const all = document.createElement("option");
+  all.value = ""; all.textContent = "All statuses";
+  sel.appendChild(all);
+  for (const s of statusOptions) {
+    const opt = document.createElement("option");
+    opt.value = s; opt.textContent = s;
+    sel.appendChild(opt);
+  }
+  sel.value = current;
+}
+
+function visibleLeads() {
+  const q = $("search").value.trim().toLowerCase();
+  const status = $("filter-status").value;
+  return leads.filter(l => {
+    if (status && l.Status !== status) return false;
+    if (!q) return true;
+    return [l["Company Name"], l["City"], l["Decision Maker"], l["Title"]]
+      .join(" ").toLowerCase().includes(q);
+  });
+}
+
+function renderLeads() {
+  const tbody = document.querySelector("#leads tbody");
+  tbody.textContent = "";
+  const rows = visibleLeads();
+  $("leads-empty").hidden = leads.length > 0;
+  $("no-match").hidden = !(leads.length > 0 && rows.length === 0);
+
+  for (const lead of rows) {
+    const tr = document.createElement("tr");
+    if (lead._row === currentRow) tr.className = "active";
+
+    for (const [key, cls] of [["Company Name", "name"], ["City", ""], ["Decision Maker", ""]]) {
+      const td = document.createElement("td");
+      td.textContent = lead[key] || "";
+      if (cls) td.className = cls;
+      tr.appendChild(td);
+    }
+
+    const tdStatus = document.createElement("td");
+    const select = document.createElement("select");
+    const options = [...statusOptions];
+    if (lead.Status && !options.includes(lead.Status)) options.push(lead.Status);
+    for (const s of options) {
+      const opt = document.createElement("option");
+      opt.value = s; opt.textContent = s;
+      if (s === lead.Status) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener("change", () => setStatus(lead, select));
+    tdStatus.appendChild(select);
+    tr.appendChild(tdStatus);
+
+    const tdView = document.createElement("td");
+    const view = document.createElement("button");
+    view.type = "button"; view.className = "link"; view.textContent = "View";
+    view.addEventListener("click", () => { showLead(lead, "Leads list", lead._row); renderLeads(); });
+    tdView.appendChild(view);
+    tr.appendChild(tdView);
+
+    tbody.appendChild(tr);
+  }
+}
+
+async function setStatus(lead, select) {
+  const err = $("leads-error");
+  const previous = lead.Status;
+  const next = select.value;
+  select.disabled = true; err.hidden = true;
+  try {
+    const res = await fetch(`/api/leads/${lead._row}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || "Could not update status");
+    lead.Status = next;
+    if (currentRow === lead._row) $("r-status").textContent = "Status: " + next;
+  } catch (e) {
+    select.value = previous;
+    err.textContent = e.message; err.hidden = false;
+  } finally {
+    select.disabled = false;
+  }
+}
+
+$("search").addEventListener("input", renderLeads);
+$("filter-status").addEventListener("change", renderLeads);
+$("refresh").addEventListener("click", loadLeads);
+loadLeads();
+</script>
+</body>
+</html>
