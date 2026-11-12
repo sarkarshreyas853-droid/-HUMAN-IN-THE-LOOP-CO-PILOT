@@ -49,8 +49,11 @@ Also find publicly listed BUSINESS contact touchpoints: office phone or WhatsApp
 official email, and a LinkedIn profile or company page URL.
 
 Rules:
-- Use the website content provided and, if you have a search tool, search the web
-  (try "<company> <city> founder", "<company> production head linkedin", "<company> contact").
+- Use ONLY the website content and web search results given to you. You cannot browse.
+- Copy every email, phone number and URL exactly as it appears in that material. Never build
+  or complete a URL yourself (for example, never guess a LinkedIn address from a name).
+- A search result about a different company with a similar name is not evidence. Check that
+  the result names this company before using anything from it.
 - Only report a person if a source actually names them at this company. If nothing reliable
   turns up, set decision_maker and title to "Not found" - do not invent a name.
 - Only use contact details that are published for business use (company site, business
@@ -85,8 +88,11 @@ Write two drafts for the lead described by the user:
 
 Rules for both:
 - Address the decision-maker by first name if one is given; otherwise "Hi there" / "Hi team".
-- Never invent facts about them (numbers, dates, clients) that are not in the lead details.
-  If the requirement is "Not found", refer to their line of work in general instead.
+- Never invent facts about them (numbers, dates, clients, events, launches, campaigns) that
+  are not in the lead details. Do not write that they "host", "run" or "are planning"
+  something unless the requirement says so.
+- If the requirement is "Not found" or says no specific requirement was seen, the hook is
+  their line of work exactly as described, and nothing more specific.
 - Plain, confident, human. No "I hope this finds you well", no buzzwords, no exclamation spam.
 - Reply with one JSON object and nothing else:
 {{"email_subject": "...", "email_body": "...", "whatsapp": "..."}}"""

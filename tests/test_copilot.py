@@ -128,7 +128,7 @@ def _groq(replies):
     client.sent = []
     queue = list(replies)
 
-    async def fake_chat(messages, model, max_tokens=1500):
+    async def fake_chat(messages, model, max_tokens=1500, temperature=0.3):
         client.sent.append({"messages": messages, "model": model})
         return queue.pop(0)
 
@@ -138,7 +138,7 @@ def _groq(replies):
 
 def test_enrich_uses_search_results_and_site_data(monkeypatch):
     async def fake_search(queries, max_results=4):
-        return [{"title": "B Co team", "url": "https://b.co/team", "content": "Asha Rao, Founder"}]
+        return [{"title": "B Co team", "url": "https://b.co/team", "content": "Asha Rao, Founder. Write to a@b.co"}]
 
     monkeypatch.setattr(llm_module, "web_search", fake_search)
     client = _groq(['Here you go {"decision_maker": "Asha Rao", "title": "Founder", "phone": "", '
@@ -294,3 +294,80 @@ def test_fields_api_rejects_non_editable(csv_store):
     assert client.post("/api/leads/2/fields", json={"fields": {"Notes": "ok"}}).status_code == 200
     assert client.post("/api/leads/2/fields", json={"fields": {"Status": "Sent"}}).status_code == 400
     assert client.post("/api/leads/99/fields", json={"fields": {"Notes": "x"}}).status_code == 404
+
+
+# ---------- evidence checks ----------
+
+def _enrich_with(monkeypatch, reply, results, company="Event Planet Technologies Private Limited", **kwargs):
+    async def fake_search(queries, max_results=4):
+        return results
+
+    monkeypatch.setattr(llm_module, "web_search", fake_search)
+    client = _groq([reply])
+    return asyncio.run(client.enrich(LeadContext(company_name=company, city="Delhi"), **kwargs))
+
+
+def test_invented_linkedin_and_contacts_are_dropped(monkeypatch):
+    results = [{"title": "Event Planet raises funding", "url": "https://news.example/ep",
+                "content": "Event Planet founder Rohit Yagya said the app is growing."}]
+    reply = ('{"decision_maker": "Rohit Yagya", "title": "Founder & CEO", "phone": "+91 98765 43210", '
+             '"email": "rohit@eventplanet.in", "linkedin": "https://www.linkedin.com/in/rohit-yagya-123456789/", '
+             '"sources": ["https://news.example/ep", "https://made-up.example"], "confidence": "medium"}')
+    result = _enrich_with(monkeypatch, reply, results)
+    assert result.decision_maker == "Rohit Yagya"          # the name is in a source, so it stays
+    assert result.linkedin == "" and result.email == "" and result.phone == ""
+    assert result.sources == ["https://news.example/ep"]
+
+
+def test_linkedin_of_a_namesake_at_another_company_is_dropped(monkeypatch):
+    results = [{"title": "Deepak Tyagi - Acme Logistics | LinkedIn",
+                "url": "https://in.linkedin.com/in/deepak-tyagi-14898426",
+                "content": "Deepak Tyagi, operations manager at Acme Logistics."}]
+    reply = ('{"decision_maker": "Deepak Tyagi", "title": "Founder", '
+             '"linkedin": "https://in.linkedin.com/in/deepak-tyagi-14898426", "confidence": "medium"}')
+    result = _enrich_with(monkeypatch, reply, results)
+    assert result.linkedin == ""
+
+
+def test_linkedin_from_a_result_naming_the_company_is_kept(monkeypatch):
+    results = [{"title": "Event Planet | LinkedIn", "url": "https://www.linkedin.com/company/event-planet-india/",
+                "content": "Event Planet is an event planning app. Founder: Rohit Yagya."}]
+    reply = ('{"decision_maker": "Rohit Yagya", "title": "Founder", '
+             '"linkedin": "https://www.linkedin.com/company/event-planet-india", "confidence": "high"}')
+    result = _enrich_with(monkeypatch, reply, results)
+    assert result.linkedin.endswith("event-planet-india") and result.confidence == "high"
+
+
+def test_similar_company_name_is_not_a_match(monkeypatch):
+    results = [{"title": "The Case Study Project | LinkedIn",
+                "url": "https://www.linkedin.com/company/the-case-study-project", "content": "A research studio."}]
+    reply = '{"decision_maker": "Not found", "linkedin": "https://www.linkedin.com/company/the-case-study-project"}'
+    result = _enrich_with(monkeypatch, reply, results, company="The Case Project")
+    assert result.linkedin == ""
+
+
+def test_placeholder_or_unsourced_name_becomes_not_found(monkeypatch):
+    for name in ["Founder (Name not publicly listed)", "Priya Menon"]:
+        reply = '{"decision_maker": "%s", "title": "Founder", "confidence": "high"}' % name
+        result = _enrich_with(monkeypatch, reply, [], site_text="We plan weddings in Kolkata.")
+        assert result.decision_maker == "Not found" and result.title == "Not found"
+        assert result.confidence == "low"
+
+
+def test_site_contacts_are_kept(monkeypatch):
+    reply = ('{"decision_maker": "Anirban Chakraborty", "title": "Founder", "phone": "070018 08451", '
+             '"email": "hello@karnikaevents.com", "confidence": "high"}')
+    result = _enrich_with(
+        monkeypatch, reply, [], company="Karnika Event Planners",
+        site_text="Founded by Anirban Chakraborty.", site_emails=["hello@karnikaevents.com"],
+        site_phones=["07001808451"],
+    )
+    assert result.decision_maker == "Anirban Chakraborty"
+    assert result.email == "hello@karnikaevents.com" and result.phone == "070018 08451"
+
+
+def test_draft_is_told_when_no_live_requirement_was_seen():
+    client = _groq(['{"email_subject": "s", "email_body": "b", "whatsapp": "short one"}'])
+    context = LeadContext(company_name="X", city="Y", requirement_context="Sells cases; no specific event requirement seen.")
+    asyncio.run(client.draft(context, llm_module.Enrichment()))
+    assert "Do not say or imply" in client.sent[0]["messages"][1]["content"]
