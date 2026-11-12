@@ -4,8 +4,10 @@ Groq serves open models through an OpenAI-compatible endpoint. Each method sends
 prompt and returns parsed JSON. The pipeline only depends on the three methods
 extract_context, enrich and draft.
 """
+import asyncio
 import base64
 import json
+import logging
 import re
 
 import httpx
@@ -16,6 +18,34 @@ from .models import NOT_FOUND, Drafts, Enrichment, LeadContext
 from .search import web_search
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+log = logging.getLogger("copilot")
+
+# Groq's free tier allows about 8,000 tokens per minute, shared by all three steps of a
+# lead. These limits keep one lead inside that budget (roughly 4 characters per token).
+EXTRACT_TEXT_CHARS = 6000
+ENRICH_SITE_CHARS = 5000
+ENRICH_MAX_RESULTS = 6
+ENRICH_RESULT_CHARS = 500
+RATE_LIMIT_RETRIES = 2
+RATE_LIMIT_MAX_WAIT = 40  # seconds
+
+
+def _trim_site_text(text: str, limit: int) -> str:
+    """Keep the start of the home page and the end, where the about/contact pages are."""
+    if len(text) <= limit:
+        return text
+    head = limit // 4
+    return text[:head] + "\n...\n" + text[-(limit - head):]
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float:
+    """How long Groq asks us to wait after a 429 (from the header or the message)."""
+    header = resp.headers.get("retry-after", "")
+    try:
+        return float(header)
+    except ValueError:
+        match = re.search(r"try again in ([0-9.]+)s", resp.text)
+        return float(match.group(1)) if match else 20.0
 
 
 def parse_json_object(text: str) -> dict:
@@ -142,9 +172,16 @@ class GroqLLM:
         if model.startswith("openai/gpt-oss"):
             body["reasoning_effort"] = "low"
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                GROQ_URL, headers={"Authorization": f"Bearer {self.api_key}"}, json=body
-            )
+            for attempt in range(RATE_LIMIT_RETRIES + 1):
+                resp = await client.post(
+                    GROQ_URL, headers={"Authorization": f"Bearer {self.api_key}"}, json=body
+                )
+                if resp.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
+                    break
+                # Free-tier per-minute limit: wait as long as Groq asks, then try again.
+                wait = min(_retry_after_seconds(resp) + 1, RATE_LIMIT_MAX_WAIT)
+                log.info("Groq rate limit reached; waiting %.0f seconds before retrying", wait)
+                await asyncio.sleep(wait)
         if resp.status_code >= 400:
             raise RuntimeError(f"Groq error {resp.status_code}: {resp.text[:300]}")
         content = resp.json()["choices"][0]["message"].get("content") or ""
@@ -161,7 +198,7 @@ class GroqLLM:
         if source_url:
             text += f"\nSource URL: {source_url}"
         if page_text:
-            text += f"\n\nPage content:\n{page_text}"
+            text += f"\n\nPage content:\n{page_text[:EXTRACT_TEXT_CHARS]}"
         elif source_url and not image_bytes:
             text += "\n\n(The page could not be fetched. Infer what you safely can from the URL itself.)"
 
@@ -178,7 +215,7 @@ class GroqLLM:
 
         reply = await self._chat(
             [{"role": "system", "content": prompts.EXTRACT_SYSTEM}, {"role": "user", "content": user_content}],
-            model, max_tokens=800,
+            model, max_tokens=500,
         )
         data = parse_json_object(reply)
         return LeadContext(**{k: str(v) for k, v in data.items() if k in LeadContext.model_fields and v})
@@ -192,8 +229,9 @@ class GroqLLM:
             f"{context.company_name} {context.city} founder production head contact",
             f"{context.company_name} {context.city} linkedin",
         ])
+        results = results[:ENRICH_MAX_RESULTS]
         results_text = "\n\n".join(
-            f"- {r['title']} ({r['url']})\n  {r['content']}" for r in results
+            f"- {r['title']} ({r['url']})\n  {r['content'][:ENRICH_RESULT_CHARS]}" for r in results
         ) or "(no web search results)"
 
         user = (
@@ -202,12 +240,12 @@ class GroqLLM:
             f"What they need: {context.requirement_context}\n\n"
             f"Emails seen on their site: {', '.join(site_emails or []) or 'none'}\n"
             f"Phone numbers seen on their site: {', '.join(site_phones or []) or 'none'}\n\n"
-            f"Website content:\n{site_text or '(not available)'}\n\n"
+            f"Website content:\n{_trim_site_text(site_text, ENRICH_SITE_CHARS) or '(not available)'}\n\n"
             f"Web search results:\n{results_text}"
         )
         reply = await self._chat(
             [{"role": "system", "content": prompts.ENRICH_SYSTEM}, {"role": "user", "content": user}],
-            settings.groq_model, max_tokens=1200, temperature=0,  # same input, same answer
+            settings.groq_model, max_tokens=700, temperature=0,  # same input, same answer
         )
         data = verify_enrichment(
             parse_json_object(reply), context.company_name,
@@ -237,7 +275,7 @@ class GroqLLM:
             )
         reply = await self._chat(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            settings.groq_model, max_tokens=1000,
+            settings.groq_model, max_tokens=700,
         )
         data = parse_json_object(reply)
         drafts = Drafts(**{k: str(v) for k, v in data.items() if k in Drafts.model_fields and v})

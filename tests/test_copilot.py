@@ -371,3 +371,46 @@ def test_draft_is_told_when_no_live_requirement_was_seen():
     context = LeadContext(company_name="X", city="Y", requirement_context="Sells cases; no specific event requirement seen.")
     asyncio.run(client.draft(context, llm_module.Enrichment()))
     assert "Do not say or imply" in client.sent[0]["messages"][1]["content"]
+
+
+# ---------- Groq free-tier rate limit ----------
+
+def test_rate_limit_waits_and_retries(monkeypatch):
+    calls, waits = [], []
+
+    class FakeResponse:
+        def __init__(self, status, payload, text=""):
+            self.status_code, self._payload, self.text, self.headers = status, payload, text, {}
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+
+        async def post(self, url, headers=None, json=None):
+            calls.append(json)
+            if len(calls) == 1:
+                return FakeResponse(429, {}, "Rate limit reached. Please try again in 2.5s.")
+            return FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})
+
+    async def fake_sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(llm_module.asyncio, "sleep", fake_sleep)
+    reply = asyncio.run(GroqLLM(api_key="k")._chat([{"role": "user", "content": "hi"}], "m"))
+    assert reply == "ok" and len(calls) == 2 and waits == [3.5]
+
+
+def test_long_pages_are_trimmed_before_sending():
+    client = _groq(['{"company_name": "Acme", "city": "Goa", "requirement_context": "x", "website": ""}',
+                    '{"decision_maker": "Not found"}'])
+    long_text = "home " * 3000 + "CONTACT PAGE Asha Rao founder"
+    asyncio.run(client.extract_context(page_text=long_text, source_url="https://acme.in"))
+    assert len(client.sent[0]["messages"][1]["content"]) < 6500
+    asyncio.run(client.enrich(LeadContext(company_name="Acme", city="Goa"), site_text=long_text))
+    sent = client.sent[1]["messages"][1]["content"]
+    assert len(sent) < 6500 and "CONTACT PAGE Asha Rao founder" in sent   # the end of the site is kept
